@@ -1,12 +1,14 @@
 """
 Dune Analytics MCP Server
 A comprehensive Model Context Protocol server for interacting with Dune Analytics API
-Built with FastMCP 2.x
+Built with FastMCP 2.x - Updated for deployment compatibility
 """
 
 import os
 import asyncio
 import logging
+import sys
+import argparse
 from typing import Dict, List, Optional, Union, Literal, Annotated
 from datetime import datetime, timedelta
 import json
@@ -215,7 +217,10 @@ def get_dune_client() -> DuneClient:
     if not api_key:
         raise ToolError("DUNE_API_KEY environment variable not set")
 
-    config = DuneConfig(api_key=api_key)
+    base_url = os.getenv("DUNE_API_BASE_URL", "https://api.dune.com/api/v1")
+    timeout = int(os.getenv("DUNE_API_TIMEOUT", "300"))
+
+    config = DuneConfig(api_key=api_key, base_url=base_url, timeout=timeout)
     return DuneClient(config)
 
 # MCP Tools
@@ -567,7 +572,102 @@ async def results_resource(execution_id: str) -> str:
     except Exception as e:
         return f"Error fetching results for {execution_id}: {str(e)}"
 
+# Health check endpoint for deployments
+@mcp.tool(
+    description="Health check endpoint for deployment monitoring",
+    annotations={
+        "title": "Health Check",
+        "readOnlyHint": True,
+        "openWorldHint": False
+    }
+)
+async def health_check() -> Dict[str, str]:
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "service": "Dune Analytics MCP Server",
+        "version": "1.0.0",
+        "timestamp": datetime.now().isoformat()
+    }
+
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description="Dune Analytics MCP Server")
+    parser.add_argument(
+        "--transport", 
+        choices=["stdio", "http", "sse"], 
+        default="stdio",
+        help="Transport protocol to use"
+    )
+    parser.add_argument(
+        "--host", 
+        default="127.0.0.1",
+        help="Host to bind to (for HTTP transport)"
+    )
+    parser.add_argument(
+        "--port", 
+        type=int, 
+        default=8000,
+        help="Port to bind to (for HTTP transport)"
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Logging level"
+    )
+    return parser.parse_args()
+
+async def main_async():
+    """Async main function for deployment scenarios"""
+    args = parse_args()
+
+    # Configure logging
+    log_level = getattr(logging, args.log_level)
+    logging.getLogger().setLevel(log_level)
+
+    logger.info(f"Starting Dune Analytics MCP Server")
+    logger.info(f"Transport: {args.transport}")
+
+    if args.transport in ["http", "sse"]:
+        logger.info(f"Host: {args.host}:{args.port}")
+
+    # Check for required environment variables
+    if not os.getenv("DUNE_API_KEY"):
+        logger.error("DUNE_API_KEY environment variable not set")
+        logger.error("Please set your Dune API key before starting the server")
+        sys.exit(1)
+
+    try:
+        # Run server with specified transport
+        await mcp.run_async(
+            transport=args.transport,
+            host=args.host if args.transport in ["http", "sse"] else None,
+            port=args.port if args.transport in ["http", "sse"] else None
+        )
+    except KeyboardInterrupt:
+        logger.info("Server shutdown requested")
+    except Exception as e:
+        logger.error(f"Server error: {e}")
+        sys.exit(1)
+
+def main():
+    """Main entry point"""
+    # Check if we're running in an async context already
+    try:
+        loop = asyncio.get_running_loop()
+        # If we're already in an async context, run the async main
+        loop.create_task(main_async())
+    except RuntimeError:
+        # Not in an async context, run normally
+        asyncio.run(main_async())
+
 # Server configuration and startup
 if __name__ == "__main__":
-    # Run with stdio transport for MCP clients
-    mcp.run(transport="stdio")
+    # Handle both deployment scenarios and local development
+    if len(sys.argv) == 1:
+        # No arguments provided, use default stdio transport
+        mcp.run(transport="stdio")
+    else:
+        # Arguments provided, use main function with argument parsing
+        main()

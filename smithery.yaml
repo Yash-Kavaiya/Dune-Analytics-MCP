@@ -1,18 +1,41 @@
-# Smithery configuration file: https://smithery.ai/docs/build/project-config/smithery.yaml
-
+# Smithery.ai configuration for Dune Analytics MCP Server
 startCommand:
-  type: stdio
-  configSchema:
-    # JSON Schema defining the configuration options for the MCP.
-    type: object
-    properties: {}
-    required: []
-  commandFunction: |
-    (config) => ({
-      "command": "python",
-      "args": ["main.py"],
-      "env": {}
-    })
+  type: "http"
 
-build:
-  dockerBuildPath: .
+configSchema:
+  type: "object"
+  required: ["apiKey"]
+  properties:
+    apiKey:
+      type: "string"
+      title: "Dune API Key"
+      description: "Your Dune Analytics API key from https://dune.com/settings/api"
+    performance:
+      type: "string"
+      enum: ["medium", "large"]
+      default: "medium"
+      title: "Query Performance Tier"
+      description: "Execution performance tier for queries"
+    timeout:
+      type: "number"
+      default: 300
+      minimum: 30
+      maximum: 600
+      title: "Request Timeout"
+      description: "API request timeout in seconds"
+
+exampleConfig:
+  apiKey: "your_dune_api_key_here"
+  performance: "medium"
+  timeout: 300
+
+commandFunction: |-
+  (config) => ({
+    command: 'python',
+    args: ['dune_mcp_server.py'],
+    env: {
+      DUNE_API_KEY: config.apiKey,
+      DUNE_API_TIMEOUT: config.timeout.toString(),
+      FASTMCP_LOG_LEVEL: 'INFO'
+    }
+  })
